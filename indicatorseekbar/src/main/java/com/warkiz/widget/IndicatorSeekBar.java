@@ -6,9 +6,11 @@ import android.content.res.ColorStateList;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.StateListDrawable;
@@ -21,6 +23,7 @@ import android.support.annotation.RequiresApi;
 import android.text.TextPaint;
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewParent;
@@ -53,6 +56,7 @@ import java.math.BigDecimal;
 public class IndicatorSeekBar extends View {
     private static final int THUMB_MAX_WIDTH = 30;
     private static final String FORMAT_PROGRESS = "${PROGRESS}";
+    private static final String FORMAT_THUMB_TEXT = "${THUMB_TEXT}";
     private static final String FORMAT_TICK_TEXT = "${TICK_TEXT}";
     private Context mContext;
     private Paint mStockPaint;//the paint for seek bar drawing
@@ -129,6 +133,7 @@ public class IndicatorSeekBar extends View {
     private int mBackgroundTrackColor;
     private int mProgressTrackColor;
     private int[] mSectionTrackColorArray;//save the color for each section tracks.
+    private int[] mGradientColorArray;//渐变颜色集合
     private boolean mCustomTrackSectionColorResult;//true to confirm to custom the section track color
     //thumb
     private float mThumbRadius;//the thumb's radius
@@ -211,6 +216,7 @@ public class IndicatorSeekBar extends View {
         mThumbSize = ta.getDimensionPixelSize(R.styleable.IndicatorSeekBar_isb_thumb_size, builder.thumbSize);
         mThumbDrawable = ta.getDrawable(R.styleable.IndicatorSeekBar_isb_thumb_drawable);
         mAdjustAuto = ta.getBoolean(R.styleable.IndicatorSeekBar_isb_thumb_adjust_auto, true);
+        mHideThumb = ta.getBoolean(R.styleable.IndicatorSeekBar_isb_hide_thumb, false);
         initThumbColor(ta.getColorStateList(R.styleable.IndicatorSeekBar_isb_thumb_color), builder.thumbColor);
         //thumb text
         mShowThumbText = ta.getBoolean(R.styleable.IndicatorSeekBar_isb_show_thumb_text, builder.showThumbText);
@@ -478,7 +484,8 @@ public class IndicatorSeekBar extends View {
     }
 
     private void drawTrack(Canvas canvas) {
-        if (mCustomTrackSectionColorResult) {//the track has custom the section track color
+        boolean useGradientProgress = mGradientColorArray != null && mGradientColorArray.length > 0;
+        if (!useGradientProgress && mCustomTrackSectionColorResult) {//the track has custom the section track color
             int sectionSize = mTicksCount - 1 > 0 ? mTicksCount - 1 : 1;
             for (int i = 0; i < sectionSize; i++) {
                 if (mR2L) {
@@ -506,14 +513,29 @@ public class IndicatorSeekBar extends View {
                 }
             }
         } else {
-            //draw progress track
-            mStockPaint.setColor(mProgressTrackColor);
-            mStockPaint.setStrokeWidth(mProgressTrackSize);
-            canvas.drawLine(mProgressTrack.left, mProgressTrack.top, mProgressTrack.right, mProgressTrack.bottom, mStockPaint);
             //draw BG track
             mStockPaint.setColor(mBackgroundTrackColor);
             mStockPaint.setStrokeWidth(mBackgroundTrackSize);
             canvas.drawLine(mBackgroundTrack.left, mBackgroundTrack.top, mBackgroundTrack.right, mBackgroundTrack.bottom, mStockPaint);
+
+            //draw progress track
+            //如果隐藏了thumb，在进度为0的时候，不需要再绘制进度了
+            Log.d("hh","mProgress:" + mProgress);
+            if (mHideThumb && mProgress == 0) {
+                return;
+            }
+
+            if (useGradientProgress) {
+                int[] mColors = mGradientColorArray;
+                LinearGradient linearGradient =
+                        new LinearGradient(0, 0, mProgressTrack.right, 0, mColors, null, Shader.TileMode.MIRROR);
+                mStockPaint.setShader(linearGradient);
+            } else {
+                mStockPaint.setColor(mProgressTrackColor);
+            }
+            mStockPaint.setStrokeWidth(mProgressTrackSize);
+            canvas.drawLine(mProgressTrack.left, mProgressTrack.top, mProgressTrack.right, mProgressTrack.bottom, mStockPaint);
+            mStockPaint.setShader(null);
         }
     }
 
@@ -640,7 +662,15 @@ public class IndicatorSeekBar extends View {
             return;
         }
         mTextPaint.setColor(mThumbTextColor);
-        canvas.drawText(getProgressString(mProgress), getThumbCenterX(), mThumbTextY, mTextPaint);
+        canvas.drawText(_getThumbText(), getThumbCenterX(), mThumbTextY, mTextPaint);
+    }
+
+    private String _getThumbText() {
+        String progressString = getProgressString(mProgress);
+        if (mIndicatorTextFormat != null && mIndicatorTextFormat.contains(FORMAT_THUMB_TEXT)) {
+            return mIndicatorTextFormat.replace(FORMAT_THUMB_TEXT, progressString);
+        }
+        return progressString;
     }
 
     private float getThumbCenterX() {
@@ -1899,6 +1929,16 @@ public class IndicatorSeekBar extends View {
         }
         this.mCustomTrackSectionColorResult = collector.collectSectionTrackColor(colorArray);
         this.mSectionTrackColorArray = colorArray;
+        invalidate();
+    }
+
+    /**
+     * 设置渐变进度条颜色
+     *
+     * @param colorArray 颜色数组
+     */
+    public void setCustomGradientTrackColor(int[] colorArray) {
+        this.mGradientColorArray = colorArray;
         invalidate();
     }
 
